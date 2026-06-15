@@ -82,7 +82,7 @@ export default function LogModal({ elapsed, timerRef, onClose, onSaved }) {
     const { error: dbErr } = await supabase.from('prayer_logs').insert({
       user_id: user.id,
       logged_at: new Date().toISOString(),
-      prayer_date: prayerDate.toISOString().split('T')[0],
+      prayer_date: `${prayerDate.getFullYear()}-${pad(prayerDate.getMonth() + 1)}-${pad(prayerDate.getDate())}`,
       hours: h,
       minutes: m,
       seconds: s,
@@ -104,7 +104,6 @@ export default function LogModal({ elapsed, timerRef, onClose, onSaved }) {
     const caption = `🙏 Prayed in tongues on ${dateStr} — ${h > 0 ? `${h}h ` : ''}${m}m ${s}s`
     let url = `https://wa.me/?text=${encodeURIComponent(caption)}`
     if (whatsappGroup) {
-      // If it's a phone number, use wa.me/<number>; if it's a group link, open directly
       if (whatsappGroup.startsWith('http')) {
         url = whatsappGroup
       } else {
@@ -119,7 +118,6 @@ export default function LogModal({ elapsed, timerRef, onClose, onSaved }) {
     return (
       <div className="overlay">
         <div className="sheet glass w-full max-w-sm mx-4 mb-6 p-6 rounded-3xl space-y-5">
-          {/* Success */}
           <div className="text-center">
             <div className="w-14 h-14 mx-auto mb-3 rounded-full flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}>
@@ -162,7 +160,6 @@ export default function LogModal({ elapsed, timerRef, onClose, onSaved }) {
           </button>
         </div>
 
-        {/* Time summary */}
         <div className="glass-sm px-5 py-4 text-center">
           <p className="font-mono text-4xl font-bold text-amber-400">
             {pad(h)}:{pad(m)}:{pad(s)}
@@ -170,7 +167,6 @@ export default function LogModal({ elapsed, timerRef, onClose, onSaved }) {
           <p className="text-white/40 text-xs mt-1">Session duration</p>
         </div>
 
-        {/* Date */}
         <div>
           <label className="block text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
             Date (dd/mm/yyyy)
@@ -183,7 +179,6 @@ export default function LogModal({ elapsed, timerRef, onClose, onSaved }) {
             placeholder="31/12/2025"
             maxLength={10}
           />
-          {/* Quick toggle for midnight sessions */}
           <div className="flex gap-2 mt-2">
             {[0, -1].map(offset => {
               const d = new Date()
@@ -207,7 +202,6 @@ export default function LogModal({ elapsed, timerRef, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* Memory note */}
         <div>
           <label className="block text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
             Memory Note <span className="normal-case font-normal text-white/25">(optional)</span>

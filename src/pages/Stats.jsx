@@ -9,13 +9,18 @@ function fmtDuration(secs) {
   return `${m}m`
 }
 
+function localDateStr(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 function computeStreak(logs) {
   if (!logs.length) return 0
   const dates = [...new Set(logs.map(l => l.prayer_date))].sort((a, b) => b.localeCompare(a))
-  const today = new Date().toISOString().split('T')[0]
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  const now = new Date()
+  const today = localDateStr(now)
+  const yest = new Date(now); yest.setDate(now.getDate() - 1)
+  const yesterday = localDateStr(yest)
 
-  // Must have logged today or yesterday to have an active streak
   if (dates[0] !== today && dates[0] !== yesterday) return 0
 
   let streak = 1
@@ -65,17 +70,17 @@ export default function Stats() {
   const avgSeconds = sessionCount > 0 ? Math.round(totalSeconds / sessionCount) : 0
   const uniqueDays = new Set(logs.map(l => l.prayer_date)).size
 
-  // Best day
   const dayMap = {}
   for (const log of logs) {
     dayMap[log.prayer_date] = (dayMap[log.prayer_date] || 0) + log.total_seconds
   }
   const bestDay = Object.entries(dayMap).sort((a, b) => b[1] - a[1])[0]
 
-  // Last 7 days bar chart data
+  const today = localDateStr(new Date())
   const last7 = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(Date.now() - i * 86400000).toISOString().split('T')[0]
-    return { date: d, secs: dayMap[d] || 0 }
+    const d = new Date(); d.setDate(d.getDate() - i)
+    const dateStr = localDateStr(d)
+    return { date: dateStr, secs: dayMap[dateStr] || 0 }
   }).reverse()
   const max7 = Math.max(...last7.map(d => d.secs), 1)
 
@@ -100,14 +105,13 @@ export default function Stats() {
           </div>
         ) : (
           <>
-            {/* Last 7 days mini chart */}
             <div className="glass px-5 py-5">
               <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-4">Last 7 Days</p>
               <div className="flex items-end gap-2 h-20">
                 {last7.map((d, i) => {
                   const pct = (d.secs / max7) * 100
                   const dayLabel = dayLabels[new Date(d.date + 'T12:00:00').getDay()]
-                  const isToday = d.date === new Date().toISOString().split('T')[0]
+                  const isToday = d.date === today
                   return (
                     <div key={i} className="flex-1 flex flex-col items-center gap-1">
                       <div className="w-full flex items-end justify-center" style={{ height: '60px' }}>
@@ -131,7 +135,6 @@ export default function Stats() {
               </div>
             </div>
 
-            {/* Streak + total */}
             <div className="grid grid-cols-2 gap-3">
               <div className="glass-sm px-5 py-5 flex flex-col items-center text-center">
                 <p className="text-4xl mb-1">🔥</p>
