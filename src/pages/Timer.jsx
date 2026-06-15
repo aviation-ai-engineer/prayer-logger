@@ -3,22 +3,45 @@ import LogModal from '../components/LogModal'
 
 function pad(n) { return String(n).padStart(2, '0') }
 
-// Silent audio keep-awake: iOS suspends web pages in background unless an audio session is active.
-function createKeepAwake() {
+// ── Audio keep-awake ─────────────────────────────────────────────────────
+// iOS only registers a "Now Playing" audio session (= lock screen controls)
+// when an <audio> or <video> ELEMENT is playing.  AudioContext does NOT count.
+// We keep one <audio> element looping a tiny near-silent WAV so that:
+//   (a) iOS keeps the page alive in background, and
+//   (b) the Media Session API can show lock-screen play/pause controls.
+//
+// The WAV is embedded as base64 (0.1 s, 8-bit 8kHz mono, low-amplitude 10Hz sine)
+// so no extra file is needed.
+const KEEPAWAKE_SRC =
+  'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgI' +
+  'CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgYGBgYGBgYGBgYGBg' +
+  'YGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBg' +
+  'YGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBg' +
+  'YGBgYKBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBg' +
+  'YGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBg' +
+  'YGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBg' +
+  'YGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYICAgICAgICAgICAgI' +
+  'CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgH9/f39/f39/f39/f3' +
+  '9/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f35+fn5+fn5+fn5+' +
+  'fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn' +
+  '5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+' +
+  'fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn' +
+  '5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+' +
+  'fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn9/f39/f39/f39/f3' +
+  '9/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/fw=='
+
+function makeAudioEl() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate)
-    const src = ctx.createBufferSource()
-    src.buffer = buf
-    src.loop = true
-    src.connect(ctx.destination)
-    src.start(0)
-    return { ctx, src }
+    const el = new Audio(KEEPAWAKE_SRC)
+    el.loop   = true
+    el.volume = 0.01   // 1 % — audible to iOS audio session, imperceptible to ears
+    return el
   } catch (e) {
     return null
   }
 }
 
+// ── localStorage persistence ──────────────────────────────────────────────
 const LS_KEY = 'prayerTimerState'
 function loadSaved() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) } catch { return null }
@@ -42,11 +65,12 @@ export default function Timer() {
   const startTimeRef   = useRef(null)
   const baseElapsedRef = useRef(0)
   const timerCardRef   = useRef(null)
-  const audioRef       = useRef(null)
+  const audioRef       = useRef(null)   // <audio> element
   const runningRef     = useRef(false)
 
   useEffect(() => { runningRef.current = running }, [running])
 
+  // ── Restore saved state on mount ─────────────────────────
   useEffect(() => {
     const saved = loadSaved()
     if (!saved) return
@@ -69,21 +93,19 @@ export default function Timer() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Keep-awake ────────────────────────────────────────────
   const startKeepAwake = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.ctx.resume?.().catch(() => {})
-      return
-    }
-    audioRef.current = createKeepAwake()
+    if (!audioRef.current) audioRef.current = makeAudioEl()
+    audioRef.current?.play().catch(() => {})
   }, [])
 
   const stopKeepAwake = useCallback(() => {
     if (!audioRef.current) return
-    try { audioRef.current.src.stop() } catch {}
-    try { audioRef.current.ctx.close() } catch {}
-    audioRef.current = null
+    audioRef.current.pause()
+    audioRef.current.currentTime = 0
   }, [])
 
+  // ── Lock-screen metadata ──────────────────────────────────
   function updateLockScreen(isRunning, secs) {
     if (!('mediaSession' in navigator)) return
     const h = Math.floor(secs / 3600)
@@ -96,6 +118,7 @@ export default function Timer() {
     navigator.mediaSession.playbackState = isRunning ? 'playing' : 'paused'
   }
 
+  // ── Toggle ────────────────────────────────────────────────
   const toggle = useCallback(() => {
     if (runningRef.current) {
       clearInterval(intervalRef.current)
@@ -121,6 +144,7 @@ export default function Timer() {
     }
   }, [startKeepAwake, stopKeepAwake])
 
+  // ── Reset ─────────────────────────────────────────────────
   const reset = useCallback(() => {
     clearInterval(intervalRef.current)
     setRunning(false)
@@ -134,6 +158,7 @@ export default function Timer() {
     }
   }, [stopKeepAwake])
 
+  // ── Done for Day ──────────────────────────────────────────
   const doneForDay = useCallback(() => {
     let cur = baseElapsedRef.current
     if (runningRef.current) {
@@ -148,6 +173,7 @@ export default function Timer() {
     setShowModal(true)
   }, [stopKeepAwake])
 
+  // ── Lock-screen handlers (stable via ref) ─────────────────
   const toggleRef = useRef(toggle)
   const resetRef  = useRef(reset)
   useEffect(() => { toggleRef.current = toggle }, [toggle])
@@ -167,24 +193,30 @@ export default function Timer() {
     }
   }, [])
 
+  // ── Visibility change — resync time + resume audio ────────
   useEffect(() => {
     function onVisible() {
       if (document.visibilityState !== 'visible') return
       if (!runningRef.current) return
       const delta = Math.floor((Date.now() - startTimeRef.current) / 1000)
       setElapsed(baseElapsedRef.current + delta)
-      if (audioRef.current?.ctx?.state === 'suspended') {
-        audioRef.current.ctx.resume?.().catch(() => {})
+      if (audioRef.current?.paused) {
+        audioRef.current.play().catch(() => {})
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
+  // ── Cleanup on unmount ────────────────────────────────────
   useEffect(() => () => {
     clearInterval(intervalRef.current)
-    stopKeepAwake()
-  }, [stopKeepAwake])
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+  }, [])
 
   const h = Math.floor(elapsed / 3600)
   const m = Math.floor((elapsed % 3600) / 60)
